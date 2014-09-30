@@ -3,6 +3,9 @@
 var module = angular.module('restangular', []);
 
 module.provider('Restangular', function() {
+  // Make $q available on callbacks via late variable fullfillment.
+  var $Q;
+
   // Configuration
   var Configurer = {};
   Configurer.init = function(object, config) {
@@ -329,10 +332,27 @@ module.provider('Restangular', function() {
     config.fullRequestInterceptor = function(element, operation, path, url, headers, params, httpConfig) {
       var interceptors = angular.copy(config.requestInterceptors);
       var defaultRequest = config.defaultInterceptor(element, operation, path, url, headers, params, httpConfig);
-      return _.reduce(interceptors, function(request, interceptor) {
-        return _.extend(request, interceptor(request.element, operation,
-          path, url, request.headers, request.params, request.httpConfig));
-      }, defaultRequest);
+      var promise = $Q.when(defaultRequest);
+
+      _.forEach(interceptors, function (interceptor) {
+        promise = promise.then(function (request) {
+          var args = [
+            request.element,
+            operation,
+            path,
+            url,
+            request.headers,
+            request.params,
+            request.httpConfig
+          ];
+
+          return $Q.when(interceptor.apply(window, args)).then(function (req) {
+            return _.extend(request, req);
+          });
+        });
+      });
+
+      return promise;
     };
 
     object.addRequestInterceptor = function(interceptor) {
@@ -748,6 +768,8 @@ module.provider('Restangular', function() {
 
 
   this.$get = ['$http', '$q', function($http, $q) {
+    // Fullfill $Q.
+    $Q = $q;
 
     function createServiceForConfiguration(config) {
       var service = {};
@@ -1033,9 +1055,6 @@ module.provider('Restangular', function() {
         var url = urlHandler.fetchUrl(this, what);
         var whatFetched = what || __this[config.restangularFields.route];
 
-        var request = config.fullRequestInterceptor(null, operation,
-            whatFetched, url, headers || {}, reqParams || {}, this[config.restangularFields.httpConfig] || {});
-
         var filledArray = [];
         filledArray = config.transformElem(filledArray, true, whatFetched, service);
 
@@ -1045,7 +1064,10 @@ module.provider('Restangular', function() {
           method = 'jsonp';
         }
 
-        var okCallback = function(response) {
+        /**
+         * Called upon response success.
+         */
+        function okCallback(response) {
           var resData = response.data;
           var fullParams = response.config.params;
           var data = parseResponse(resData, operation, whatFetched, url, response, deferred);
@@ -1095,17 +1117,45 @@ module.provider('Restangular', function() {
               filledArray
             );
           }
-        };
+        }
 
-        urlHandler.resource(this, $http, request.httpConfig, request.headers, request.params, what,
-                this[config.restangularFields.etag], operation)[method]().then(okCallback, function error(response) {
+        /**
+         * Called upon response or interception error.
+         */
+        function errorCallback(response) {
           if (response.status === 304 && __this[config.restangularFields.restangularCollection]) {
             resolvePromise(deferred, response, __this, filledArray);
           } else if ( _.every(config.errorInterceptors, function(cb) { return cb(response, deferred, okCallback) !== false; }) ) {
             // triggered if no callback returns false
             deferred.reject(response);
           }
-        });
+        }
+
+        /**
+         * Called with resolved request from interceptors.
+         */
+        function makeRequest(request) {
+          urlHandler.resource.apply(window, [
+            __this,
+            $http,
+            request.httpConfig,
+            request.headers, 
+            request.params,
+            what,
+            __this[config.restangularFields.etag],
+            operation
+          ])[method]().then(okCallback, errorCallback);
+        }
+
+        config.fullRequestInterceptor.apply(window, [
+          null,
+          operation,
+          whatFetched,
+          url,
+          headers || {},
+          reqParams || {},
+          this[config.restangularFields.httpConfig] || {}
+        ]).then(makeRequest, errorCallback);
 
         return restangularizePromise(deferred.promise, true, filledArray);
       }
@@ -1137,13 +1187,14 @@ module.provider('Restangular', function() {
         if (_.isObject(callObj) && config.isRestangularized(callObj)) {
           callObj = stripRestangular(callObj);
         }
-        var request = config.fullRequestInterceptor(callObj, operation, route, fetchUrl,
-          headers || {}, resParams || {}, this[config.restangularFields.httpConfig] || {});
 
         var filledObject = {};
         filledObject = config.transformElem(filledObject, false, route, service);
 
-        var okCallback = function(response) {
+        /**
+         * Called upon response success.
+         */
+        function okCallback(response) {
           var resData = response.data;
           var fullParams = response.config.params;
           var elem = parseResponse(resData, operation, route, fetchUrl, response, deferred);
@@ -1168,39 +1219,58 @@ module.provider('Restangular', function() {
           } else {
             resolvePromise(deferred, response, undefined, filledObject);
           }
-        };
+        }
 
-        var errorCallback = function(response) {
+        /**
+         * Called upon response or interception error.
+         */
+        function errorCallback(response) {
           if (response.status === 304 && config.isSafe(operation)) {
             resolvePromise(deferred, response, __this, filledObject);
           } else if ( _.every(config.errorInterceptors, function(cb) { return cb(response, deferred, okCallback) !== false; }) ) {
             // triggered if no callback returns false
             deferred.reject(response);
           }
-        };
-        // Overring HTTP Method
-        var callOperation = operation;
-        var callHeaders = _.extend({}, request.headers);
-        var isOverrideOperation = config.isOverridenMethod(operation);
-        if (isOverrideOperation) {
-          callOperation = 'post';
-          callHeaders = _.extend(callHeaders, {'X-HTTP-Method-Override': operation === 'remove' ? 'DELETE' : operation});
-        } else if (config.jsonp && callOperation === 'get') {
-          callOperation = 'jsonp';
         }
 
-        if (config.isSafe(operation)) {
+        /**
+         * Called with resolved request from interceptors.
+         */
+        function makeRequest(request) {
+          // Overring HTTP Method
+          var callOperation = operation;
+          var callHeaders = _.extend({}, request.headers);
+          var isOverrideOperation = config.isOverridenMethod(operation);
           if (isOverrideOperation) {
-            urlHandler.resource(this, $http, request.httpConfig, callHeaders, request.params,
-              what, etag, callOperation)[callOperation]({}).then(okCallback, errorCallback);
-          } else {
-            urlHandler.resource(this, $http, request.httpConfig, callHeaders, request.params,
-              what, etag, callOperation)[callOperation]().then(okCallback, errorCallback);
+            callOperation = 'post';
+            callHeaders = _.extend(callHeaders, {'X-HTTP-Method-Override': operation === 'remove' ? 'DELETE' : operation});
+          } else if (config.jsonp && callOperation === 'get') {
+            callOperation = 'jsonp';
           }
-        } else {
-          urlHandler.resource(this, $http, request.httpConfig, callHeaders, request.params,
-            what, etag, callOperation)[callOperation](request.element).then(okCallback, errorCallback);
+
+          if (config.isSafe(operation)) {
+            if (isOverrideOperation) {
+              urlHandler.resource(__this, $http, request.httpConfig, callHeaders, request.params,
+                what, etag, callOperation)[callOperation]({}).then(okCallback, errorCallback);
+            } else {
+              urlHandler.resource(__this, $http, request.httpConfig, callHeaders, request.params,
+                what, etag, callOperation)[callOperation]().then(okCallback, errorCallback);
+            }
+          } else {
+            urlHandler.resource(__this, $http, request.httpConfig, callHeaders, request.params,
+              what, etag, callOperation)[callOperation](request.element).then(okCallback, errorCallback);
+          }
         }
+
+        config.fullRequestInterceptor.apply(window, [
+          callObj,
+          operation,
+          route,
+          fetchUrl,
+          headers || {},
+          resParams || {},
+          this[config.restangularFields.httpConfig] || {}
+        ]).then(makeRequest, errorCallback);
 
         return restangularizePromise(deferred.promise, false, filledObject);
       }
