@@ -1135,7 +1135,7 @@ module.provider('Restangular', function() {
          * Called with resolved request from interceptors.
          */
         function makeRequest(request) {
-          urlHandler.resource.apply(window, [
+          urlHandler.resource.apply(urlHandler, [
             __this,
             $http,
             request.httpConfig,
