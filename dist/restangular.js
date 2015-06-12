@@ -1,6 +1,6 @@
 /**
  * Restangular with Promise based Response & Request Interceptors
- * @version v1.5.1.1 - 2015-06-12 * @link https://github.com/MartinHarkins/restangular
+ * @version v0.1.0 - 2015-06-12 * @link https://github.com/MartinHarkins/restangular
  * @author Martin Harkins <martin.a.harkins@gmail.com>
  * @license MIT License, http://www.opensource.org/licenses/MIT
  */(function() {
