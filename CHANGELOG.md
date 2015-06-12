@@ -1,3 +1,9 @@
+1.5.1.1 / 2015-06-12
+===================
+
+  * Support for RequestInterceptor to return a Promises (based on https://github.com/lucasconstantino/restangular/tree/feature/promise-based-request-interceptors)
+  * Support for ResponseInterceptor to return a Promises
+  * Update Karma config dependencies to be served locally
 
 1.5.1 / 2015-04-03
 ==================
