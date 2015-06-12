@@ -1,6 +1,6 @@
 {
   "name": "restangular-promise-interceptors",
-  "version": "0.1.0",
+  "version": "1.5.10",
   "main": "./dist/restangular.js",
   "description": "Restangular with Promise based Response & Request Interceptors",
   "repository": {
