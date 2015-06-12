@@ -1,14 +1,14 @@
 {
   "name": "restangular",
-  "description": "Restful Resources service for AngularJS apps",
-  "version": "1.5.1",
+  "description": "Restangular with Promise based Response & Request Interceptors",
+  "version": "1.5.1.1",
   "filename": "restangular.min.js",
   "main": "./dist/restangular.min.js",
-  "homepage": "https://github.com/mgonto/restangular",
-  "author": "Martin Gontovnikas <martin@gon.to>",
+  "homepage": "https://github.com/MartinHarkins/restangular",
+  "author": "Martin Harkins <martin.a.harkins@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git://github.com/mgonto/restangular.git"
+    "url": "git://github.com/MartinHarkins/restangular.git"
   },
   "engines": {
     "node": ">= 0.9"
@@ -24,8 +24,8 @@
   ],
   "maintainers": [
     {
-      "name": "Martin Gontovnikas",
-      "website": "http://gon.to/"
+      "name": "Martin Harkins",
+      "website": "https://github.com/MartinHarkins"
     }
   ],
   "dependencies": {

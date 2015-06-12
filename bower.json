@@ -1,11 +1,11 @@
 {
-  "name": "restangular",
-  "version": "1.5.1",
+  "name": "restangular-promise-interceptors",
+  "version": "1.5.1.1",
   "main": "./dist/restangular.js",
-  "description": "Restful Resources service for AngularJS apps",
+  "description": "Restangular with Promise based Response & Request Interceptors",
   "repository": {
     "type": "git",
-    "url": "git://github.com/mgonto/restangular.git"
+    "url": "git://github.com/MartinHarkins/restangular.git"
   },
   "dependencies": {
     "lodash": ">=1.3.0",
