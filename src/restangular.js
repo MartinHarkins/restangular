@@ -286,12 +286,23 @@ restangular.provider('Restangular', function() {
     config.responseExtractor = function(data, operation, what, url, response, deferred) {
       var interceptors = angular.copy(config.responseInterceptors);
       interceptors.push(config.defaultResponseInterceptor);
-      var theData = data;
+      var promise =  $Q.when(data);
+
       _.each(interceptors, function(interceptor) {
-        theData = interceptor(theData, operation,
-          what, url, response, deferred);
+        promise = promise.then(function(theData) {
+          var args = [
+            theData,
+            operation,
+            what,
+            url,
+            response,
+            deferred
+          ];
+
+          return $Q.when(interceptor.apply(window, args));
+        });
       });
-      return theData;
+      return promise;
     };
 
     object.addResponseInterceptor = function(extractor) {
@@ -1050,12 +1061,13 @@ restangular.provider('Restangular', function() {
       }
 
       function parseResponse(resData, operation, route, fetchUrl, response, deferred) {
-        var data = config.responseExtractor(resData, operation, route, fetchUrl, response, deferred);
-        var etag = response.headers('ETag');
-        if (data && etag) {
-          data[config.restangularFields.etag] = etag;
-        }
-        return data;
+        return config.responseExtractor(resData, operation, route, fetchUrl, response, deferred).then(function(data) {
+          var etag = response.headers('ETag');
+          if (data && etag) {
+            data[config.restangularFields.etag] = etag;
+          }
+          return $Q.when(data);
+        });
       }
 
 
@@ -1081,53 +1093,59 @@ restangular.provider('Restangular', function() {
         function okCallback(response) {
           var resData = response.data;
           var fullParams = response.config.params;
-          var data = parseResponse(resData, operation, whatFetched, url, response, deferred);
 
-          // support empty response for getList() calls (some APIs respond with 204 and empty body)
-          if (_.isUndefined(data) || '' === data) {
-            data = [];
-          }
-          if (!_.isArray(data)) {
-            throw new Error('Response for getList SHOULD be an array and not an object or something else');
-          }
-          var processedData = _.map(data, function(elem) {
+          parseResponse(resData, operation, whatFetched, url, response, deferred).then(function(data) {
+            // support empty response for getList() calls (some APIs respond with 204 and empty body)
+            if (_.isUndefined(data) || '' === data) {
+              data = [];
+            }
+            if (!_.isArray(data)) {
+              throw new Error('Response for getList SHOULD be an array and not an object or something else');
+            }
+
+            var processor;
             if (!__this[config.restangularFields.restangularCollection]) {
-              return restangularizeElem(__this, elem, what, true, data);
+              processor = function(elem) {
+                return restangularizeElem(__this, elem, what, true, data);
+              };
             } else {
-              return restangularizeElem(__this[config.restangularFields.parentResource],
-                elem, __this[config.restangularFields.route], true, data);
+              var parentResource = __this[config.restangularFields.parentResource];
+              var route = __this[config.restangularFields.route];
+
+              processor = function(elem) {
+                return restangularizeElem(parentResource, elem, route, true, data);
+              };
+            }
+            var processedData = _.extend(data, _.map(data, processor));
+
+            if (!__this[config.restangularFields.restangularCollection]) {
+              resolvePromise(
+                deferred,
+                response,
+                restangularizeCollection(
+                  __this,
+                  processedData,
+                  what,
+                  true,
+                  fullParams
+                ),
+                filledArray
+              );
+            } else {
+              resolvePromise(
+                deferred,
+                response,
+                restangularizeCollection(
+                  __this[config.restangularFields.parentResource],
+                  processedData,
+                  __this[config.restangularFields.route],
+                  true,
+                  fullParams
+                ),
+                filledArray
+              );
             }
           });
-
-          processedData = _.extend(data, processedData);
-
-          if (!__this[config.restangularFields.restangularCollection]) {
-            resolvePromise(
-              deferred,
-              response,
-              restangularizeCollection(
-                __this,
-                processedData,
-                what,
-                true,
-                fullParams
-              ),
-              filledArray
-            );
-          } else {
-            resolvePromise(
-              deferred,
-              response,
-              restangularizeCollection(
-                __this[config.restangularFields.parentResource],
-                processedData,
-                __this[config.restangularFields.route],
-                true,
-                fullParams
-              ),
-              filledArray
-            );
-          }
         }
 
         /**
@@ -1208,37 +1226,38 @@ restangular.provider('Restangular', function() {
         function okCallback(response) {
           var resData = response.data;
           var fullParams = response.config.params;
-          var elem = parseResponse(resData, operation, route, fetchUrl, response, deferred);
-          if (elem) {
 
-            var data;
-            if (operation === 'post' && !__this[config.restangularFields.restangularCollection]) {
-              data = restangularizeElem(
-                __this[config.restangularFields.parentResource],
-                elem,
-                route,
-                true,
-                null,
-                fullParams
-              );
-              resolvePromise(deferred, response, data, filledObject);
+          parseResponse(resData, operation, route, fetchUrl, response, deferred).then(function(elem) {
+            if (elem) {
+              var data;
+              if (operation === 'post' && !__this[config.restangularFields.restangularCollection]) {
+                data = restangularizeElem(
+                  __this[config.restangularFields.parentResource],
+                  elem,
+                  route,
+                  true,
+                  null,
+                  fullParams
+                );
+                resolvePromise(deferred, response, data, filledObject);
+              } else {
+                data = restangularizeElem(
+                  __this[config.restangularFields.parentResource],
+                  elem,
+                  __this[config.restangularFields.route],
+                  true,
+                  null,
+                  fullParams
+                );
+
+                data[config.restangularFields.singleOne] = __this[config.restangularFields.singleOne];
+                resolvePromise(deferred, response, data, filledObject);
+              }
+
             } else {
-              data = restangularizeElem(
-                __this[config.restangularFields.parentResource],
-                elem,
-                __this[config.restangularFields.route],
-                true,
-                null,
-                fullParams
-              );
-
-              data[config.restangularFields.singleOne] = __this[config.restangularFields.singleOne];
-              resolvePromise(deferred, response, data, filledObject);
+              resolvePromise(deferred, response, undefined, filledObject);
             }
-
-          } else {
-            resolvePromise(deferred, response, undefined, filledObject);
-          }
+          });
         }
 
         /**
